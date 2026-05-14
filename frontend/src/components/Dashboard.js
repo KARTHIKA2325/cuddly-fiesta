@@ -4,7 +4,7 @@ function Dashboard() {
   const [stats, setStats] = useState(null);
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/stats')
+    fetch('https://cuddly-fiesta-j4c5.onrender.com/api/stats')
       .then((res) => res.json())
       .then(setStats)
       .catch(() => {});

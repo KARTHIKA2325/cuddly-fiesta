@@ -5,7 +5,7 @@ function FeedbackList() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('http://localhost:5000/api/feedback')
+    fetch('https://cuddly-fiesta-j4c5.onrender.com/api/feedback')
       .then((res) => res.json())
       .then((data) => { setFeedbacks(data); setLoading(false); })
       .catch(() => setLoading(false));
