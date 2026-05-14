@@ -1,135 +1,62 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import sqlite3
-import requests
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-DB_NAME = "feedback.db"
-
-# ---------------- DATABASE ---------------- #
-
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS feedback (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        employee TEXT,
-        supervisor TEXT,
-        feedback TEXT,
-        sentiment TEXT,
-        ai_summary TEXT
-    )
-    """)
-
+    conn = sqlite3.connect('feedback.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS feedback
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  feedback TEXT NOT NULL,
+                  category TEXT NOT NULL,
+                  sentiment TEXT)''')
     conn.commit()
     conn.close()
+
+@app.route('/api/feedback', methods=['POST'])
+def submit_feedback():
+    data = request.get_json()
+    feedback = data.get('feedback')
+    category = data.get('category')
+    conn = sqlite3.connect('feedback.db')
+    c = conn.cursor()
+    c.execute('INSERT INTO feedback (feedback, category, sentiment) VALUES (?, ?, ?)',
+              (feedback, category, 'Positive'))
+    conn.commit()
+    conn.close()
+    return jsonify({'message': 'Feedback submitted successfully'}), 200
+
+@app.route('/api/feedback', methods=['GET'])
+def get_feedback():
+    conn = sqlite3.connect('feedback.db')
+    c = conn.cursor()
+    c.execute('SELECT * FROM feedback')
+    rows = c.fetchall()
+    conn.close()
+    feedbacks = [{'id': r[0], 'feedback': r[1], 'category': r[2], 'sentiment': r[3]} for r in rows]
+    return jsonify(feedbacks)
+
+@app.route('/api/stats', methods=['GET'])
+def get_stats():
+    conn = sqlite3.connect('feedback.db')
+    c = conn.cursor()
+    c.execute('SELECT COUNT(*) FROM feedback')
+    total = c.fetchone()[0]
+    c.execute('SELECT COUNT(*) FROM feedback WHERE sentiment="Positive"')
+    positive = c.fetchone()[0]
+    c.execute('SELECT COUNT(*) FROM feedback WHERE sentiment="Negative"')
+    negative = c.fetchone()[0]
+    c.execute('SELECT COUNT(*) FROM feedback WHERE sentiment="Neutral"')
+    neutral = c.fetchone()[0]
+    conn.close()
+    return jsonify({'total': total, 'positive': positive, 'negative': negative, 'neutral': neutral})
 
 init_db()
 
-# ---------------- AI FUNCTION ---------------- #
-
-def analyze_feedback(feedback_text):
-
-    prompt = f"""
-    Analyze this supervisor feedback.
-
-    Feedback:
-    {feedback_text}
-
-    Return:
-    1. Sentiment (Positive/Negative/Neutral)
-    2. Short summary
-    """
-
-    response = requests.post(
-        "http://localhost:11434/api/generate",
-        json={
-            "model": "llama3",
-            "prompt": prompt,
-            "stream": False
-        }
-    )
-
-    result = response.json()["response"]
-
-    sentiment = "Neutral"
-
-    if "Positive" in result:
-        sentiment = "Positive"
-    elif "Negative" in result:
-        sentiment = "Negative"
-
-    return sentiment, result
-
-# ---------------- ROUTES ---------------- #
-
-@app.route("/submit-feedback", methods=["POST"])
-def submit_feedback():
-
-    data = request.json
-
-    employee = data["employee"]
-    supervisor = data["supervisor"]
-    feedback = data["feedback"]
-
-    sentiment, summary = analyze_feedback(feedback)
-
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    INSERT INTO feedback (
-        employee,
-        supervisor,
-        feedback,
-        sentiment,
-        ai_summary
-    )
-    VALUES (?, ?, ?, ?, ?)
-    """, (employee, supervisor, feedback, sentiment, summary))
-
-    conn.commit()
-    conn.close()
-
-    return jsonify({
-        "message": "Feedback analyzed successfully",
-        "sentiment": sentiment,
-        "summary": summary
-    })
-
-@app.route("/feedbacks", methods=["GET"])
-def get_feedbacks():
-
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM feedback")
-
-    rows = cursor.fetchall()
-
-    conn.close()
-
-    feedbacks = []
-
-    for row in rows:
-        feedbacks.append({
-            "id": row[0],
-            "employee": row[1],
-            "supervisor": row[2],
-            "feedback": row[3],
-            "sentiment": row[4],
-            "summary": row[5]
-        })
-
-    return jsonify(feedbacks)
-
-if __name__ == "__main__":
-    app.run(debug=True)
 if __name__ == '__main__':
-    import os
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False)
